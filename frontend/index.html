@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT over WebSocket - Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🌐 MQTT over WebSocket Dashboard</h1>
+            <p class="subtitle">Projeto de aprendizado - MQTT + WebSocket + Docker + Terraform</p>
+        </header>
+
+        <!-- Connection Panel -->
+        <section class="panel connection-panel">
+            <h2>📡 Conexão MQTT</h2>
+            <div class="connection-form">
+                <div class="form-group">
+                    <label for="broker-url">Broker URL:</label>
+                    <input type="text" id="broker-url" value="ws://localhost:8083/mqtt" placeholder="ws://broker.emqx.io:8083/mqtt">
+                </div>
+                <div class="form-group">
+                    <label for="client-id">Client ID:</label>
+                    <input type="text" id="client-id" readonly>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="username">Username (opcional):</label>
+                        <input type="text" id="username" placeholder="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password (opcional):</label>
+                        <input type="password" id="password" placeholder="password">
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button id="connect-btn" class="btn btn-primary">Conectar</button>
+                    <button id="disconnect-btn" class="btn btn-secondary" disabled>Desconectar</button>
+                </div>
+                <div class="status-indicator">
+                    <span class="status-dot" id="status-dot"></span>
+                    <span id="status-text">Desconectado</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Subscribe Panel -->
+        <section class="panel subscribe-panel">
+            <h2>📥 Subscription</h2>
+            <div class="subscribe-form">
+                <div class="form-row">
+                    <div class="form-group flex-grow">
+                        <label for="subscribe-topic">Tópico:</label>
+                        <input type="text" id="subscribe-topic" placeholder="sensors/temperature">
+                    </div>
+                    <div class="form-group">
+                        <label for="subscribe-qos">QoS:</label>
+                        <select id="subscribe-qos">
+                            <option value="0">0</option>
+                            <option value="1" selected>1</option>
+                            <option value="2">2</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="subscribe-btn" class="btn btn-primary" disabled>Subscribe</button>
+            </div>
+            <div class="subscribed-topics">
+                <h3>Tópicos Inscritos:</h3>
+                <ul id="topics-list"></ul>
+            </div>
+        </section>
+
+        <!-- Publish Panel -->
+        <section class="panel publish-panel">
+            <h2>📤 Publish</h2>
+            <div class="publish-form">
+                <div class="form-group">
+                    <label for="publish-topic">Tópico:</label>
+                    <input type="text" id="publish-topic" placeholder="test/topic">
+                </div>
+                <div class="form-group">
+                    <label for="publish-message">Mensagem:</label>
+                    <textarea id="publish-message" rows="4" placeholder='{"temperature": 25.5, "unit": "°C"}'></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="publish-qos">QoS:</label>
+                        <select id="publish-qos">
+                            <option value="0">0</option>
+                            <option value="1" selected>1</option>
+                            <option value="2">2</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="publish-retain"> Retain
+                        </label>
+                    </div>
+                </div>
+                <button id="publish-btn" class="btn btn-primary" disabled>Publish</button>
+            </div>
+        </section>
+
+        <!-- Quick Actions -->
+        <section class="panel quick-actions-panel">
+            <h2>⚡ Ações Rápidas</h2>
+            <div class="quick-actions">
+                <button class="btn btn-info" onclick="quickSubscribe('sensors/#')">Subscribe sensors/#</button>
+                <button class="btn btn-info" onclick="quickPublish('sensors/temperature', {value: 25.5, unit: '°C'})">Enviar Temperatura</button>
+                <button class="btn btn-info" onclick="quickPublish('sensors/humidity', {value: 65, unit: '%'})">Enviar Umidade</button>
+                <button class="btn btn-info" onclick="simulateSensor()">Simular Sensores</button>
+            </div>
+        </section>
+
+        <!-- Messages Panel -->
+        <section class="panel messages-panel">
+            <h2>💬 Mensagens Recebidas</h2>
+            <div class="messages-controls">
+                <button id="clear-messages-btn" class="btn btn-secondary">Limpar</button>
+                <label>
+                    <input type="checkbox" id="auto-scroll" checked> Auto-scroll
+                </label>
+            </div>
+            <div id="messages-container" class="messages-container"></div>
+        </section>
+
+        <!-- Statistics Panel -->
+        <section class="panel stats-panel">
+            <h2>📊 Estatísticas</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-sent">0</div>
+                    <div class="stat-label">Mensagens Enviadas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-received">0</div>
+                    <div class="stat-label">Mensagens Recebidas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-topics">0</div>
+                    <div class="stat-label">Tópicos Inscritos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-uptime">00:00:00</div>
+                    <div class="stat-label">Tempo Conectado</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>💡 Projeto educacional sobre MQTT over WebSocket</p>
+            <p>
+                <a href="https://github.com/mqttjs/MQTT.js" target="_blank">MQTT.js</a> | 
+                <a href="https://www.emqx.com/en/blog/connect-to-mqtt-broker-with-websocket" target="_blank">Guia EMQX</a> |
+                <a href="http://localhost:18083" target="_blank">EMQX Dashboard</a>
+            </p>
+        </footer>
+    </div>
+
+    <script src="js/mqtt-client.js"></script>
+</body>
+</html>

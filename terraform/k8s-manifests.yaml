@@ -1,0 +1,313 @@
+# Kubernetes manifests for MQTT over WebSocket application
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mqtt-app
+  labels:
+    name: mqtt-app
+
+---
+# EMQX Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emqx
+  namespace: mqtt-app
+  labels:
+    app: emqx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: emqx
+  template:
+    metadata:
+      labels:
+        app: emqx
+    spec:
+      containers:
+      - name: emqx
+        image: emqx/emqx:latest
+        ports:
+        - containerPort: 1883
+          name: mqtt
+        - containerPort: 8083
+          name: ws
+        - containerPort: 8084
+          name: wss
+        - containerPort: 8883
+          name: mqtts
+        - containerPort: 18083
+          name: dashboard
+        env:
+        - name: EMQX_NAME
+          value: "emqx"
+        - name: EMQX_HOST
+          value: "0.0.0.0"
+        - name: EMQX_DASHBOARD__DEFAULT_USERNAME
+          value: "admin"
+        - name: EMQX_DASHBOARD__DEFAULT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: emqx-secret
+              key: dashboard-password
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: 18083
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: 18083
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: emqx-data
+          mountPath: /opt/emqx/data
+        - name: emqx-log
+          mountPath: /opt/emqx/log
+      volumes:
+      - name: emqx-data
+        persistentVolumeClaim:
+          claimName: emqx-data-pvc
+      - name: emqx-log
+        emptyDir: {}
+
+---
+# EMQX Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: emqx
+  namespace: mqtt-app
+  labels:
+    app: emqx
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 1883
+    targetPort: 1883
+    name: mqtt
+  - port: 8083
+    targetPort: 8083
+    name: ws
+  - port: 8084
+    targetPort: 8084
+    name: wss
+  - port: 8883
+    targetPort: 8883
+    name: mqtts
+  - port: 18083
+    targetPort: 18083
+    name: dashboard
+  selector:
+    app: emqx
+
+---
+# Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mqtt-backend
+  namespace: mqtt-app
+  labels:
+    app: mqtt-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mqtt-backend
+  template:
+    metadata:
+      labels:
+        app: mqtt-backend
+    spec:
+      containers:
+      - name: backend
+        image: gcr.io/PROJECT_ID/mqtt-backend:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: MQTT_BROKER_HOST
+          value: "emqx"
+        - name: MQTT_BROKER_PORT
+          value: "1883"
+        - name: MQTT_WS_PORT
+          value: "8083"
+        - name: PORT
+          value: "3000"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mqtt-backend
+  namespace: mqtt-app
+  labels:
+    app: mqtt-backend
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: http
+  selector:
+    app: mqtt-backend
+
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mqtt-frontend
+  namespace: mqtt-app
+  labels:
+    app: mqtt-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mqtt-frontend
+  template:
+    metadata:
+      labels:
+        app: mqtt-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: gcr.io/PROJECT_ID/mqtt-frontend:latest
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mqtt-frontend
+  namespace: mqtt-app
+  labels:
+    app: mqtt-frontend
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    name: http
+  selector:
+    app: mqtt-frontend
+
+---
+# Persistent Volume Claim for EMQX
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: emqx-data-pvc
+  namespace: mqtt-app
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+
+---
+# Secret for EMQX
+apiVersion: v1
+kind: Secret
+metadata:
+  name: emqx-secret
+  namespace: mqtt-app
+type: Opaque
+stringData:
+  dashboard-password: "public"
+
+---
+# Ingress (optional - for HTTPS)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mqtt-ingress
+  namespace: mqtt-app
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - mqtt.yourdomain.com
+    secretName: mqtt-tls-secret
+  rules:
+  - host: mqtt.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: mqtt-frontend
+            port:
+              number: 80
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: mqtt-backend
+            port:
+              number: 3000

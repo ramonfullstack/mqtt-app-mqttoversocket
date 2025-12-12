@@ -1,0 +1,22 @@
+# Example terraform.tfvars
+# Copy this file to terraform.tfvars and fill in your values
+
+project_id   = "your-gcp-project-id"
+project_name = "mqtt-websocket"
+region       = "us-central1"
+zone         = "us-central1-a"
+environment  = "dev"
+
+# GKE Configuration
+gke_num_nodes    = 2
+gke_min_nodes    = 1
+gke_max_nodes    = 5
+gke_machine_type = "e2-medium"
+
+# Network Configuration
+subnet_cidr   = "10.0.0.0/24"
+pods_cidr     = "10.1.0.0/16"
+services_cidr = "10.2.0.0/16"
+
+# Security
+allowed_ssh_ips = ["0.0.0.0/0"] # Replace with your IP for production

@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # EMQX MQTT Broker
+  emqx:
+    image: emqx/emqx:latest
+    container_name: emqx
+    restart: unless-stopped
+    ports:
+      - "1883:1883"     # MQTT TCP
+      - "8083:8083"     # MQTT WebSocket
+      - "8084:8084"     # MQTT WSS (WebSocket Secure)
+      - "8883:8883"     # MQTT SSL/TLS
+      - "18083:18083"   # Dashboard
+    environment:
+      - EMQX_NAME=emqx
+      - EMQX_HOST=0.0.0.0
+      - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
+      - EMQX_DASHBOARD__DEFAULT_PASSWORD=public
+    volumes:
+      - emqx-data:/opt/emqx/data
+      - emqx-log:/opt/emqx/log
+    networks:
+      - mqtt-network
+    healthcheck:
+      test: ["CMD", "emqx", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend Node.js
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mqtt-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - MQTT_BROKER_HOST=emqx
+      - MQTT_BROKER_PORT=1883
+      - MQTT_WS_PORT=8083
+      - PORT=3000
+    depends_on:
+      emqx:
+        condition: service_healthy
+    networks:
+      - mqtt-network
+    volumes:
+      - ./backend/src:/app/src
+
+  # Frontend Web
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mqtt-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - MQTT_BROKER_URL=ws://localhost:8083/mqtt
+    networks:
+      - mqtt-network
+    depends_on:
+      - emqx
+
+volumes:
+  emqx-data:
+  emqx-log:
+
+networks:
+  mqtt-network:
+    driver: bridge
